@@ -397,6 +397,7 @@ impl TerminalBuilder {
 
             selection_head: None,
             breadcrumb_text: String::new(),
+            visual_style: None,
             scroll_px: px(0.),
             next_link_id: 0,
             selection_phase: SelectionPhase::Ended,
@@ -628,6 +629,7 @@ impl TerminalBuilder {
 
                 selection_head: None,
                 breadcrumb_text: String::new(),
+                visual_style: None,
                 scroll_px: px(0.),
                 next_link_id: 0,
                 selection_phase: SelectionPhase::Ended,
@@ -865,6 +867,7 @@ pub struct Terminal {
     pub selection_head: Option<AlacPoint>,
 
     pub breadcrumb_text: String,
+    pub visual_style: Option<thread_visual_style::ThreadVisualStyle>,
     title_override: Option<String>,
     scroll_px: Pixels,
     next_link_id: usize,
@@ -953,11 +956,18 @@ impl Terminal {
                     }
                 }
 
+                let (parsed_style, title) = thread_visual_style::parse_title_marker(&title);
+                if let Some(parsed_style) = parsed_style {
+                    if self.visual_style.as_ref() != Some(&parsed_style) {
+                        self.visual_style = Some(parsed_style);
+                    }
+                }
                 self.breadcrumb_text = title;
                 cx.emit(Event::BreadcrumbsChanged);
             }
             AlacTermEvent::ResetTitle => {
                 self.breadcrumb_text = String::new();
+                self.visual_style = None;
                 cx.emit(Event::BreadcrumbsChanged);
             }
             AlacTermEvent::ClipboardStore(_, data) => {

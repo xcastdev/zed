@@ -46,6 +46,7 @@ task.workspace = true
 telemetry.workspace = true
 terminal.workspace = true
 text.workspace = true
+thread_visual_style.workspace = true
 ui.workspace = true
 url.workspace = true
 util.workspace = true

@@ -39,6 +39,7 @@ dependencies = [
  "telemetry",
  "terminal",
  "text",
+ "thread_visual_style",
  "ui",
  "url",
  "urlencoding",
@@ -449,6 +450,7 @@ dependencies = [
  "text",
  "theme",
  "theme_settings",
+ "thread_visual_style",
  "time",
  "tree-sitter-md",
  "ui",
@@ -16417,6 +16419,7 @@ dependencies = [
  "telemetry",
  "theme",
  "theme_settings",
+ "thread_visual_style",
  "ui",
  "util",
  "workspace",
@@ -17897,6 +17900,7 @@ dependencies = [
  "theme",
  "theme_settings",
  "thiserror 2.0.17",
+ "thread_visual_style",
  "url",
  "urlencoding",
  "util",
@@ -18117,6 +18121,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f60246a4944f24f6e018aa17cdeffb7818b76356965d03b07d6a9886e8962185"
 dependencies = [
  "cfg-if",
+]
+
+[[package]]
+name = "thread_visual_style"
+version = "0.1.0"
+dependencies = [
+ "agent-client-protocol",
+ "gpui",
+ "regex",
+ "serde_json",
 ]
 
 [[package]]
@@ -19205,6 +19219,7 @@ dependencies = [
  "smallvec",
  "strum 0.27.2",
  "theme",
+ "thread_visual_style",
  "ui_macros",
  "windows 0.61.3",
 ]

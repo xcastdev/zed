@@ -208,6 +208,7 @@ members = [
     "crates/theme_settings",
     "crates/theme_importer",
     "crates/theme_selector",
+    "crates/thread_visual_style",
     "crates/time_format",
     "crates/title_bar",
     "crates/toolchain_selector",
@@ -466,6 +467,7 @@ theme = { path = "crates/theme" }
 theme_extension = { path = "crates/theme_extension" }
 theme_settings = { path = "crates/theme_settings" }
 theme_selector = { path = "crates/theme_selector" }
+thread_visual_style = { path = "crates/thread_visual_style" }
 time_format = { path = "crates/time_format" }
 platform_title_bar = { path = "crates/platform_title_bar" }
 title_bar = { path = "crates/title_bar" }

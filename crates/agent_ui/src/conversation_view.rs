@@ -297,6 +297,7 @@ impl Conversation {
                     | AcpThreadEvent::ModeUpdated(_)
                     | AcpThreadEvent::ConfigOptionsUpdated(_)
                     | AcpThreadEvent::WorkingDirectoriesUpdated
+                    | AcpThreadEvent::VisualStyleUpdated
                     | AcpThreadEvent::PromptUpdated => {}
                 }
             }
@@ -487,6 +488,7 @@ fn affects_thread_metadata(event: &AcpThreadEvent) -> bool {
         | AcpThreadEvent::ModeUpdated(_)
         | AcpThreadEvent::ConfigOptionsUpdated(_)
         | AcpThreadEvent::SubagentSpawned(_)
+        | AcpThreadEvent::VisualStyleUpdated
         | AcpThreadEvent::PromptUpdated => false,
     }
 }
@@ -1741,6 +1743,9 @@ impl ConversationView {
                 if !is_subagent && thread.read(cx).is_draft_thread() {
                     self.schedule_draft_prompt_persist(cx);
                 }
+                cx.notify();
+            }
+            AcpThreadEvent::VisualStyleUpdated => {
                 cx.notify();
             }
         }

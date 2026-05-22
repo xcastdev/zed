@@ -1,3 +1,4 @@
+use super::thread_visual_style_render;
 use crate::{CommonAnimationExt, DiffStat, GradientFade, HighlightedLabel, Tooltip, prelude::*};
 
 use gpui::{
@@ -5,6 +6,7 @@ use gpui::{
 };
 use itertools::Itertools as _;
 use std::{path::PathBuf, sync::Arc, time::Duration};
+use thread_visual_style::ThreadVisualStyle;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum AgentThreadStatus {
@@ -60,6 +62,7 @@ pub struct ThreadItem {
     on_hover: Box<dyn Fn(&bool, &mut Window, &mut App) + 'static>,
     action_slot: Option<AnyElement>,
     base_bg: Option<Hsla>,
+    visual_style: Option<ThreadVisualStyle>,
 }
 
 impl ThreadItem {
@@ -92,6 +95,7 @@ impl ThreadItem {
             on_hover: Box::new(|_, _, _| {}),
             action_slot: None,
             base_bg: None,
+            visual_style: None,
         }
     }
 
@@ -222,6 +226,11 @@ impl ThreadItem {
         self.base_bg = Some(color);
         self
     }
+
+    pub fn visual_style(mut self, style: Option<ThreadVisualStyle>) -> Self {
+        self.visual_style = style;
+        self
+    }
 }
 
 impl RenderOnce for ThreadItem {
@@ -268,7 +277,12 @@ impl RenderOnce for ThreadItem {
                 .justify_center()
                 .when(!icon_visible, |this| this.invisible())
         };
-        let icon_color = self.icon_color.unwrap_or(Color::Muted);
+        let icon_color = thread_visual_style_render::resolve_icon_color(
+            self.icon_color,
+            self.visual_style.as_ref(),
+            self.status,
+            cx,
+        );
         let agent_icon = if let Some(custom_svg) = self.custom_icon_from_external_svg {
             Icon::from_external_svg(custom_svg)
                 .color(icon_color)
@@ -382,7 +396,10 @@ impl RenderOnce for ThreadItem {
             || has_diff_stats
             || has_timestamp;
 
-        v_flex()
+        let visual_style = self.visual_style.clone();
+        let visual_style_base_bg = base_bg;
+
+        let row = v_flex()
             .id(self.id.clone())
             .cursor_pointer()
             .group("thread-item")
@@ -584,7 +601,14 @@ impl RenderOnce for ThreadItem {
                     _ => gpui::Empty.into_any_element(),
                 }))
             })
-            .when_some(self.on_click, |this, on_click| this.on_click(on_click))
+            .when_some(self.on_click, |this, on_click| this.on_click(on_click));
+
+        thread_visual_style_render::wrap_with_visual_style(
+            row,
+            visual_style.as_ref(),
+            visual_style_base_bg,
+            cx,
+        )
     }
 }
 

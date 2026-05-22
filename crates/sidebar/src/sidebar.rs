@@ -200,6 +200,7 @@ struct ActiveThreadInfo {
     is_background: bool,
     is_title_generating: bool,
     diff_stats: DiffStats,
+    visual_style: Option<thread_visual_style::ThreadVisualStyle>,
 }
 
 #[derive(Clone)]
@@ -266,6 +267,7 @@ struct ThreadEntry {
     highlight_positions: Vec<usize>,
     worktrees: Vec<ThreadItemWorktreeInfo>,
     diff_stats: DiffStats,
+    visual_style: Option<thread_visual_style::ThreadVisualStyle>,
 }
 
 #[derive(Clone)]
@@ -275,6 +277,7 @@ struct TerminalEntry {
     worktrees: Vec<ThreadItemWorktreeInfo>,
     has_notification: bool,
     highlight_positions: Vec<usize>,
+    visual_style: Option<thread_visual_style::ThreadVisualStyle>,
 }
 
 impl ThreadEntry {
@@ -292,6 +295,7 @@ impl ThreadEntry {
         self.is_background = info.is_background;
         self.is_title_generating = info.is_title_generating;
         self.diff_stats = info.diff_stats;
+        self.visual_style = info.visual_style.clone();
     }
 }
 
@@ -1245,6 +1249,8 @@ impl Sidebar {
 
         let groups = mw.project_groups(cx);
         let mut live_notified_terminal_ids: HashSet<TerminalId> = HashSet::new();
+        let mut live_terminal_visual_styles: HashMap<TerminalId, thread_visual_style::ThreadVisualStyle> =
+            HashMap::new();
         for workspace in &workspaces {
             if let Some(agent_panel) = workspace.read(cx).panel::<AgentPanel>(cx) {
                 live_notified_terminal_ids.extend(
@@ -1253,6 +1259,13 @@ impl Sidebar {
                         .terminals(cx)
                         .into_iter()
                         .filter_map(|terminal| terminal.has_notification.then_some(terminal.id)),
+                );
+                live_terminal_visual_styles.extend(
+                    agent_panel
+                        .read(cx)
+                        .terminals(cx)
+                        .into_iter()
+                        .filter_map(|terminal| terminal.visual_style.map(|style| (terminal.id, style))),
                 );
             }
         }
@@ -1317,12 +1330,16 @@ impl Sidebar {
                         worktree_info_from_thread_paths(&metadata.worktree_paths, &branch_by_path);
                     let has_notification =
                         live_notified_terminal_ids.contains(&metadata.terminal_id);
+                    let visual_style = live_terminal_visual_styles
+                        .get(&metadata.terminal_id)
+                        .cloned();
                     TerminalEntry {
                         metadata,
                         workspace,
                         worktrees,
                         has_notification,
                         highlight_positions: Vec::new(),
+                        visual_style,
                     }
                 };
 
@@ -1444,6 +1461,7 @@ impl Sidebar {
                             highlight_positions: Vec::new(),
                             worktrees,
                             diff_stats: DiffStats::default(),
+                            visual_style: None,
                         }
                     };
 
@@ -5464,6 +5482,7 @@ impl Sidebar {
             })
             .worktrees(worktrees)
             .timestamp(timestamp)
+            .visual_style(thread.visual_style.clone())
             .highlight_positions(thread.highlight_positions.to_vec())
             .title_generating(thread.is_title_generating)
             .notified(has_notification)
@@ -5598,6 +5617,7 @@ impl Sidebar {
             .is_remote(is_remote)
             .worktrees(worktrees)
             .timestamp(timestamp)
+            .visual_style(terminal.visual_style.clone())
             .notified(terminal.has_notification)
             .highlight_positions(terminal.highlight_positions.clone())
             .selected(is_active)
@@ -7083,6 +7103,7 @@ fn all_thread_infos_for_workspace(
             };
 
             let diff_stats = thread.action_log().read(cx).diff_stats(cx);
+            let visual_style = thread.visual_style().cloned();
 
             Some(ActiveThreadInfo {
                 session_id,
@@ -7093,6 +7114,7 @@ fn all_thread_infos_for_workspace(
                 is_background,
                 is_title_generating,
                 diff_stats,
+                visual_style,
             })
         });
 

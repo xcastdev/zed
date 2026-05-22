@@ -138,6 +138,7 @@ pub struct AgentPanelTerminalInfo {
     pub has_notification: bool,
     pub custom_title: Option<SharedString>,
     pub working_directory: Option<PathBuf>,
+    pub visual_style: Option<thread_visual_style::ThreadVisualStyle>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -2908,6 +2909,7 @@ impl AgentPanel {
                 has_notification: terminal.has_notification,
                 custom_title: terminal.custom_title(cx),
                 working_directory: terminal.working_directory.clone(),
+                visual_style: terminal.view.read(cx).terminal().read(cx).visual_style.clone(),
             })
             .collect()
     }

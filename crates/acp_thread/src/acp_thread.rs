@@ -1108,6 +1108,7 @@ pub struct AcpThread {
     parent_session_id: Option<acp::SessionId>,
     title: Option<SharedString>,
     provisional_title: Option<SharedString>,
+    visual_style: Option<thread_visual_style::ThreadVisualStyle>,
     entries: Vec<AgentThreadEntry>,
     plan: Plan,
     project: Entity<Project>,
@@ -1187,6 +1188,7 @@ pub enum AcpThreadEvent {
     ModeUpdated(acp::SessionModeId),
     ConfigOptionsUpdated(Vec<acp::SessionConfigOption>),
     WorkingDirectoriesUpdated,
+    VisualStyleUpdated,
 }
 
 impl EventEmitter<AcpThreadEvent> for AcpThread {}
@@ -1322,6 +1324,7 @@ impl AcpThread {
             plan: Default::default(),
             title,
             provisional_title: None,
+            visual_style: None,
             project,
             running_turn: None,
             turn_id: 0,
@@ -1399,6 +1402,10 @@ impl AcpThread {
 
     pub fn has_provisional_title(&self) -> bool {
         self.provisional_title.is_some()
+    }
+
+    pub fn visual_style(&self) -> Option<&thread_visual_style::ThreadVisualStyle> {
+        self.visual_style.as_ref()
     }
 
     pub fn entries(&self) -> &[AgentThreadEntry] {
@@ -1567,6 +1574,12 @@ impl AcpThread {
                 self.update_plan(plan, cx);
             }
             acp::SessionUpdate::SessionInfoUpdate(info_update) => {
+                if let Some(new_style) = thread_visual_style::parse_meta_opt(&info_update.meta) {
+                    if self.visual_style.as_ref() != Some(&new_style) {
+                        self.visual_style = Some(new_style);
+                        cx.emit(AcpThreadEvent::VisualStyleUpdated);
+                    }
+                }
                 if let acp::MaybeUndefined::Value(title) = info_update.title {
                     let had_provisional = self.provisional_title.take().is_some();
                     let title: SharedString = title.into();
@@ -5648,6 +5661,91 @@ mod tests {
         assert!(
             connection.set_title_calls.borrow().is_empty(),
             "session info title update should not propagate back to the connection"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_session_info_update_applies_visual_style_metadata(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let connection = Rc::new(FakeAgentConnection::new());
+
+        let thread = cx
+            .update(|cx| {
+                connection
+                    .clone()
+                    .new_session(project, PathList::new(&[Path::new(path!("/test"))]), cx)
+            })
+            .await
+            .unwrap();
+
+        let style_events = Rc::new(RefCell::new(0usize));
+        let style_events_for_subscription = style_events.clone();
+        thread.update(cx, |_thread, cx| {
+            cx.subscribe(
+                &thread,
+                move |_thread, _event_thread, event: &AcpThreadEvent, _cx| {
+                    if matches!(event, AcpThreadEvent::VisualStyleUpdated) {
+                        *style_events_for_subscription.borrow_mut() += 1;
+                    }
+                },
+            )
+            .detach();
+        });
+
+        let meta = acp::Meta::from_iter([(
+            thread_visual_style::ZED_THREAD_STYLE_META_KEY.into(),
+            serde_json::json!({
+                "accent_color": "#3b82f6",
+                "state": "running",
+                "badge": "working",
+            }),
+        )]);
+
+        let result = thread.update(cx, |thread, cx| {
+            thread.handle_session_update(
+                acp::SessionUpdate::SessionInfoUpdate(
+                    acp::SessionInfoUpdate::new().meta(meta.clone()),
+                ),
+                cx,
+            )
+        });
+        result.expect("session info update should succeed");
+
+        thread.read_with(cx, |thread, _| {
+            let style = thread
+                .visual_style()
+                .expect("visual style should be applied from _meta");
+            assert!(style.accent_color.is_some());
+            assert_eq!(style.badge.as_deref(), Some("working"));
+            assert_eq!(
+                style.known_state(),
+                Some(thread_visual_style::KnownState::Running)
+            );
+        });
+
+        assert_eq!(
+            *style_events.borrow(),
+            1,
+            "VisualStyleUpdated should fire when a style is first applied"
+        );
+
+        // Sending the same style again is a no-op (no event).
+        let result = thread.update(cx, |thread, cx| {
+            thread.handle_session_update(
+                acp::SessionUpdate::SessionInfoUpdate(
+                    acp::SessionInfoUpdate::new().meta(meta.clone()),
+                ),
+                cx,
+            )
+        });
+        result.expect("session info update should succeed");
+        assert_eq!(
+            *style_events.borrow(),
+            1,
+            "VisualStyleUpdated should not fire when the style is unchanged"
         );
     }
 
