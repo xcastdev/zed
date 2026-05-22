@@ -958,9 +958,17 @@ impl Terminal {
 
                 let (parsed_style, title) = thread_visual_style::parse_title_marker(&title);
                 if let Some(parsed_style) = parsed_style {
-                    if self.visual_style.as_ref() != Some(&parsed_style) {
-                        self.visual_style = Some(parsed_style);
+                    // `[zed-style]` with no body decodes to the default style;
+                    // collapse that to `None` so it acts as an explicit reset.
+                    let normalized = (parsed_style
+                        != thread_visual_style::ThreadVisualStyle::default())
+                    .then_some(parsed_style);
+                    if self.visual_style != normalized {
+                        self.visual_style = normalized;
                     }
+                } else if title.is_empty() && self.visual_style.is_some() {
+                    // No marker AND empty title: same intent as `ResetTitle`.
+                    self.visual_style = None;
                 }
                 self.breadcrumb_text = title;
                 cx.emit(Event::BreadcrumbsChanged);

@@ -118,7 +118,9 @@ pub fn parse_title_marker(title: &str) -> (Option<ThreadVisualStyle>, String) {
 fn marker_regex() -> &'static regex::Regex {
     static MARKER_RE: OnceLock<regex::Regex> = OnceLock::new();
     MARKER_RE.get_or_init(|| {
-        regex::Regex::new(r"\[zed-style\s+([^\]]*)\]").expect("zed-style marker regex is valid")
+        // Body is optional so a bare `[zed-style]` acts as an explicit reset.
+        regex::Regex::new(r"\[zed-style(?:\s+([^\]]*))?\]")
+            .expect("zed-style marker regex is valid")
     })
 }
 
@@ -266,6 +268,29 @@ mod tests {
         assert!(style.background_tint.is_some());
         assert_eq!(style.badge.as_deref(), Some("hi"));
         assert_eq!(style.state.as_deref(), Some("deploying"));
+    }
+
+    #[test]
+    fn parse_title_marker_empty_marker_yields_default_style() {
+        // `[zed-style]` is the explicit reset form.
+        let (style, cleaned) = parse_title_marker("[zed-style] back to plain");
+        let style = style.expect("empty marker still counts as a marker");
+        assert_eq!(style, ThreadVisualStyle::default());
+        assert_eq!(cleaned, "back to plain");
+
+        // Whitespace-only body is equivalent.
+        let (style, cleaned) = parse_title_marker("[zed-style ] back to plain");
+        let style = style.expect("whitespace-only marker still counts as a marker");
+        assert_eq!(style, ThreadVisualStyle::default());
+        assert_eq!(cleaned, "back to plain");
+    }
+
+    #[test]
+    fn parse_title_marker_requires_word_boundary_after_zed_style() {
+        // `[zed-styleX]` must NOT be parsed as our marker.
+        let (style, cleaned) = parse_title_marker("[zed-styleX] not a marker");
+        assert!(style.is_none());
+        assert_eq!(cleaned, "[zed-styleX] not a marker");
     }
 
     #[test]

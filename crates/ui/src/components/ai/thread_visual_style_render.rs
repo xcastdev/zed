@@ -51,11 +51,14 @@ pub fn resolve_icon_color(
         if let Some(icon) = style.icon_color {
             return Color::Custom(icon);
         }
-        if let Some(state) = style.known_state() {
-            return Color::Custom(default_accent_for(state, cx));
-        }
+        // Prefer the user-supplied accent (so the icon matches the rail when
+        // both are derived from `accent_color`). Fall back to the state default
+        // only when the agent provided no explicit accent.
         if let Some(accent) = style.accent_color {
             return Color::Custom(accent);
+        }
+        if let Some(state) = style.known_state() {
+            return Color::Custom(default_accent_for(state, cx));
         }
     }
     Color::Muted
