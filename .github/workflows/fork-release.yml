@@ -165,6 +165,11 @@ jobs:
         run: |
           pacman -Syu --noconfirm --needed git curl tar jq
       - uses: actions/checkout@v4
+      - name: Mark workspace as safe for git
+        # The archlinux container runs as root but $GITHUB_WORKSPACE is owned
+        # by the runner user, so git refuses with "dubious ownership" when
+        # script/bundle-linux runs `git rev-parse HEAD`.
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Install Linux dependencies (Arch path inside script/linux)
         run: ./script/linux
       - name: Source cargo env
