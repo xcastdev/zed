@@ -1431,7 +1431,8 @@ impl AgentDiff {
             | AcpThreadEvent::ModeUpdated(_)
             | AcpThreadEvent::ConfigOptionsUpdated(_)
             | AcpThreadEvent::WorkingDirectoriesUpdated
-            | AcpThreadEvent::PromptUpdated => {}
+            | AcpThreadEvent::PromptUpdated
+            | AcpThreadEvent::VisualStyleUpdated => {}
         }
     }
 
