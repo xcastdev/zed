@@ -241,6 +241,7 @@ impl RenderOnce for ThreadItem {
             .blend(color.panel_background.opacity(0.25));
 
         let raw_bg = self.base_bg.unwrap_or(sidebar_base_bg);
+        let raw_bg = thread_visual_style_render::apply_background_tint(raw_bg, self.visual_style.as_ref());
         let apparent_bg = color.background.blend(raw_bg);
 
         let base_bg = if self.selected {

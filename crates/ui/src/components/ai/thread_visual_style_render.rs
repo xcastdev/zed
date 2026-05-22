@@ -61,19 +61,25 @@ pub fn resolve_icon_color(
     Color::Muted
 }
 
+/// Blend a `background_tint` into the row's raw base color. Called before the
+/// row computes `apparent_bg` / `base_bg` / `hover_bg`, so selection, focus,
+/// and hover backgrounds (which are blended on top) remain visible above the
+/// tint as documented in the precedence rules.
+pub fn apply_background_tint(base: Hsla, style: Option<&ThreadVisualStyle>) -> Hsla {
+    let Some(tint) = style.and_then(|s| s.background_tint) else {
+        return base;
+    };
+    base.blend(tint)
+}
+
 /// Wrap a rendered row with an optional 2px left accent rail.
 ///
 /// When `style` is `None` (or carries no accent and no canonical state) the
 /// row is returned unchanged. The rail sits as an absolute-positioned overlay
 /// on the left edge of the row, so the row's own selection / focus / hover
 /// indicators stay visible above the rail. Pointer events fall through to the
-/// row because the rail does not call `occlude()`.
-///
-/// Note: `background_tint` is parsed and stored, but not yet rendered. A
-/// background tint applied from outside the row would either be hidden by the
-/// row's own opaque backgrounds (placed behind) or block interaction (placed
-/// in front). The cleanest fix requires `ThreadItem` to blend the tint into
-/// its internal `base_bg`, deferred to a follow-up.
+/// row because the rail does not call `occlude()`. The background tint is
+/// applied separately via [`apply_background_tint`] before the row renders.
 pub fn wrap_with_visual_style<E: IntoElement>(
     row: E,
     style: Option<&ThreadVisualStyle>,
