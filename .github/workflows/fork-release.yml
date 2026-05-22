@@ -1,0 +1,240 @@
+# Personal-fork release workflow.
+#
+# Triggered when you push a tag matching `personal-v*`. Builds Zed for
+# Ubuntu (x86_64), Arch Linux (x86_64), and macOS (Apple Silicon), then
+# publishes them as a GitHub Release attached to the tag, with a changelog
+# generated from commits since the previous `personal-v*` tag.
+#
+# To cut a release:
+#   git tag personal-v1.5.0
+#   git push origin personal-v1.5.0
+#
+# To test the build without publishing a release, use the "Run workflow"
+# button in the Actions tab (skips the publish step).
+#
+# Designed for a personal fork. Uses GitHub-hosted runners (free for public
+# repos, billable on private). No Sentry / sccache / signing — for those,
+# see upstream's release.yml.
+
+name: Fork release
+
+on:
+  push:
+    tags:
+      - 'personal-v*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Build only, do not publish a release'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: '1'
+
+jobs:
+  changelog:
+    name: Generate changelog
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.gen.outputs.tag }}
+      previous_tag: ${{ steps.gen.outputs.previous_tag }}
+      is_release: ${{ steps.gen.outputs.is_release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - id: gen
+        name: Compute changelog vs. previous personal-v* tag
+        run: |
+          set -euo pipefail
+
+          # Tag name (refs/tags/personal-v1.5.0 → personal-v1.5.0).
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            IS_RELEASE="true"
+          else
+            # Manual dispatch: synthesize a tag name from the short SHA.
+            TAG="personal-manual-$(git rev-parse --short HEAD)"
+            IS_RELEASE="false"
+          fi
+
+          # Previous personal-v* tag (newest matching, excluding the current one).
+          PREV=$(git tag --list 'personal-v*' --sort=-version:refname \
+                  | grep -vFx "$TAG" \
+                  | head -n1 || true)
+
+          {
+            echo "# ${TAG}"
+            echo
+            if [[ -z "$PREV" ]]; then
+              echo "_Initial fork release._"
+              echo
+              echo "## Commits"
+              git log --pretty='- %s (`%h`)' HEAD
+            else
+              echo "_Changes since [\`${PREV}\`](../../releases/tag/${PREV})._"
+              echo
+              echo "## Commits"
+              git log --pretty='- %s (`%h`)' "${PREV}..HEAD"
+            fi
+            echo
+            echo "## Installing on macOS"
+            echo
+            echo "The \`Zed-aarch64.dmg\` in this release is **unsigned and unnotarized**"
+            echo "(personal-fork builds don't have Apple developer credentials), so macOS"
+            echo "Gatekeeper will refuse to open it by default."
+            echo
+            echo "After dragging \`Zed.app\` to \`/Applications\`, clear the quarantine"
+            echo "attribute once:"
+            echo
+            echo '```bash'
+            echo "xattr -dr com.apple.quarantine /Applications/Zed.app"
+            echo '```'
+            echo
+            echo "After that it opens normally and future launches don't require any"
+            echo "extra steps. If you skip the \`xattr\` command, you can also right-click"
+            echo "\`Zed.app\` → **Open** → confirm the warning dialog the first time."
+            echo
+            echo "## Build info"
+            echo "- Commit: \`$(git rev-parse HEAD)\`"
+            echo "- Built: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          } > CHANGELOG.md
+
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "previous_tag=${PREV}" >> "$GITHUB_OUTPUT"
+          echo "is_release=${IS_RELEASE}" >> "$GITHUB_OUTPUT"
+
+          echo "=== Generated CHANGELOG.md ==="
+          cat CHANGELOG.md
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: changelog
+          path: CHANGELOG.md
+
+  build-ubuntu:
+    name: Build (Ubuntu x86_64)
+    runs-on: ubuntu-22.04
+    env:
+      CC: clang
+      CXX: clang++
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux dependencies
+        run: ./script/linux
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ubuntu-x86_64
+      - name: Download wasi-sdk
+        run: ./script/download-wasi-sdk
+      - name: Bundle
+        run: ./script/bundle-linux
+      - name: Rename artifact for clarity
+        run: |
+          mv target/release/zed-linux-x86_64.tar.gz \
+             target/release/zed-ubuntu-x86_64.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zed-ubuntu-x86_64
+          path: target/release/zed-ubuntu-x86_64.tar.gz
+          if-no-files-found: error
+
+  build-arch:
+    name: Build (Arch Linux x86_64)
+    runs-on: ubuntu-24.04
+    container:
+      image: archlinux:latest
+    env:
+      CC: clang
+      CXX: clang++
+    steps:
+      # script/linux installs everything via pacman when run on Arch.
+      # It calls sudo if available; in the container we run as root, which
+      # the script handles via an empty `maysudo` variable.
+      - name: Install Arch dependencies
+        run: |
+          pacman -Syu --noconfirm --needed git curl tar jq
+      - uses: actions/checkout@v4
+      - name: Install Linux dependencies (Arch path inside script/linux)
+        run: ./script/linux
+      - name: Source cargo env
+        run: |
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: arch-x86_64
+      - name: Download wasi-sdk
+        run: ./script/download-wasi-sdk
+      - name: Bundle
+        run: ./script/bundle-linux
+      - name: Rename artifact for clarity
+        run: |
+          mv target/release/zed-linux-x86_64.tar.gz \
+             target/release/zed-arch-x86_64.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zed-arch-x86_64
+          path: target/release/zed-arch-x86_64.tar.gz
+          if-no-files-found: error
+
+  build-macos-arm:
+    name: Build (macOS Apple Silicon)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: macos-arm
+      - name: Download wasi-sdk
+        run: ./script/download-wasi-sdk
+      - name: Bundle (unsigned)
+        # Without MACOS_CERTIFICATE / Apple notarization secrets, bundle-mac
+        # gracefully degrades to an unsigned .dmg. Recipients will need to
+        # right-click → Open the first time (or run
+        #   xattr -dr com.apple.quarantine /Applications/Zed.app
+        # after installing).
+        run: ./script/bundle-mac aarch64-apple-darwin
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zed-macos-aarch64
+          path: target/aarch64-apple-darwin/release/Zed-aarch64.dmg
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: [changelog, build-ubuntu, build-arch, build-macos-arm]
+    if: needs.changelog.outputs.is_release == 'true' && (inputs.dry_run == false || inputs.dry_run == null)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Show downloaded artifacts
+        run: ls -R dist
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ needs.changelog.outputs.tag }}"
+          gh release create "$TAG" \
+            --title "Zed Fork ${TAG}" \
+            --notes-file dist/changelog/CHANGELOG.md \
+            dist/zed-ubuntu-x86_64/zed-ubuntu-x86_64.tar.gz \
+            dist/zed-arch-x86_64/zed-arch-x86_64.tar.gz \
+            dist/zed-macos-aarch64/Zed-aarch64.dmg
