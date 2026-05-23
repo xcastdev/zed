@@ -127,6 +127,21 @@ jobs:
       CC: clang
       CXX: clang++
     steps:
+      - name: Free disk space
+        # GitHub-hosted runners ship with ~14GB free on /, which isn't enough
+        # to compile and link a full Zed release. This reclaims ~25-30GB by
+        # removing pre-installed tooling we don't use (Android SDK, .NET, GHC,
+        # docker images, swap). `tool-cache: false` is kept so Node/Python
+        # remain available for other actions.
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: false
+          docker-images: true
+          swap-storage: true
       - uses: actions/checkout@v4
       - name: Install Linux dependencies
         run: ./script/linux
@@ -154,10 +169,31 @@ jobs:
     runs-on: ubuntu-24.04
     container:
       image: archlinux:latest
+      # Bind-mount the host's bulky pre-installed toolchains into the container
+      # so we can `rm -rf` them and reclaim host disk space. Without this, a
+      # release build runs out of disk at ~70% through link.
+      # jlumbroso/free-disk-space doesn't help here because its host paths
+      # aren't visible from inside `container:`.
+      volumes:
+        - /usr/local/lib/android:/host-cleanup/android
+        - /usr/share/dotnet:/host-cleanup/dotnet
+        - /opt/ghc:/host-cleanup/ghc
+        - /usr/local/share/boost:/host-cleanup/boost
+        - /opt/hostedtoolcache/CodeQL:/host-cleanup/codeql
     env:
       CC: clang
       CXX: clang++
     steps:
+      - name: Free host disk space via bind-mounted volumes
+        run: |
+          set -eu
+          df -h /
+          rm -rf /host-cleanup/android \
+                 /host-cleanup/dotnet \
+                 /host-cleanup/ghc \
+                 /host-cleanup/boost \
+                 /host-cleanup/codeql || true
+          df -h /
       # script/linux installs everything via pacman when run on Arch.
       # It calls sudo if available; in the container we run as root, which
       # the script handles via an empty `maysudo` variable.
