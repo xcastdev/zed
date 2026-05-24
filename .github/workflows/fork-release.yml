@@ -205,7 +205,10 @@ jobs:
       # the script handles via an empty `maysudo` variable.
       - name: Install Arch dependencies
         run: |
-          pacman -Syu --noconfirm --needed git curl tar jq
+          # `llvm` provides llvm-objcopy, which script/bundle-linux uses to
+          # strip debug symbols. script/linux installs it on the Ubuntu path
+          # but the Arch path in the same script omits it.
+          pacman -Syu --noconfirm --needed git curl tar jq llvm
       - uses: actions/checkout@v4
       - name: Mark workspace as safe for git
         # The archlinux container runs as root but $GITHUB_WORKSPACE is owned
