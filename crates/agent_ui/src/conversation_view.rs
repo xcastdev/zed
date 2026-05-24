@@ -2678,6 +2678,37 @@ impl ConversationView {
                     );
                 }
             }
+            NotifyWhenAgentWaiting::SystemNotification => {
+                #[cfg(target_os = "linux")]
+                {
+                    let id = format!("zed-agent-{}", root_thread_id.to_key_string());
+                    let notification_title = title.to_string();
+                    let notification_body = caption.into().to_string();
+                    cx.background_spawn(async move {
+                        crate::ui::agent_notification_dbus::send(
+                            &id,
+                            &notification_title,
+                            Some(&notification_body),
+                        )
+                        .await
+                    })
+                    .detach_and_log_err(cx);
+                }
+                #[cfg(not(target_os = "linux"))]
+                if let Some(primary) = cx.primary_display() {
+                    self.pop_up(
+                        icon,
+                        caption.into(),
+                        title,
+                        root_thread_id,
+                        root_work_dirs,
+                        root_title,
+                        window,
+                        primary,
+                        cx,
+                    );
+                }
+            }
             NotifyWhenAgentWaiting::Never => {
                 // Don't show anything
             }

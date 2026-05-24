@@ -370,6 +370,7 @@ dependencies = [
  "agent_skills",
  "ai_onboarding",
  "anyhow",
+ "ashpd",
  "async-channel 2.5.0",
  "audio",
  "base64 0.22.1",

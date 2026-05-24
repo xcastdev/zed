@@ -353,6 +353,7 @@ pub enum NotifyWhenAgentWaiting {
     #[default]
     PrimaryScreen,
     AllScreens,
+    SystemNotification,
     Never,
 }
 
