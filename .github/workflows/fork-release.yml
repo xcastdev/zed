@@ -12,6 +12,13 @@
 # To test the build without publishing a release, use the "Run workflow"
 # button in the Actions tab (skips the publish step).
 #
+# To re-publish a previous run's builds (e.g. after a release-job bug fix)
+# without re-building, use the "Run workflow" button with:
+#   - publish_from_run: <run-id of the previous workflow run>
+#   - tag: <the tag to release under, e.g. personal-v0.1.0>
+#   - dry_run: false
+# The build jobs are skipped; only the changelog + release jobs run.
+#
 # Designed for a personal fork. Uses GitHub-hosted runners (free for public
 # repos, billable on private). No Sentry / sccache / signing — for those,
 # see upstream's release.yml.
@@ -29,9 +36,20 @@ on:
         required: false
         type: boolean
         default: true
+      publish_from_run:
+        description: 'Run ID to download build artifacts from (skips builds). Requires `tag`.'
+        required: false
+        type: string
+        default: ''
+      tag:
+        description: 'Tag to publish as (e.g. personal-v0.1.0). Required with publish_from_run.'
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: write
+  actions: read  # needed for actions/download-artifact to read from a different workflow run
 
 env:
   CARGO_TERM_COLOR: always
@@ -53,15 +71,22 @@ jobs:
 
       - id: gen
         name: Compute changelog vs. previous personal-v* tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
 
-          # Tag name (refs/tags/personal-v1.5.0 → personal-v1.5.0).
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+          # Tag selection priority:
+          #   1. Explicit `tag` workflow_dispatch input (used by publish_from_run mode).
+          #   2. The pushed git tag (refs/tags/personal-v1.5.0 → personal-v1.5.0).
+          #   3. Synthesized from short SHA (manual dispatch, no tag input, dry-run only).
+          if [[ -n "${INPUT_TAG}" ]]; then
+            TAG="${INPUT_TAG}"
+            IS_RELEASE="true"
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
             IS_RELEASE="true"
           else
-            # Manual dispatch: synthesize a tag name from the short SHA.
             TAG="personal-manual-$(git rev-parse --short HEAD)"
             IS_RELEASE="false"
           fi
@@ -75,10 +100,11 @@ jobs:
             echo "# ${TAG}"
             echo
             if [[ -z "$PREV" ]]; then
+              # No previous personal-v* tag: this is the first fork release.
+              # Do NOT dump `git log HEAD` here — that's the entire upstream Zed
+              # history and trivially exceeds GitHub's 125k-char release body
+              # limit.
               echo "_Initial fork release._"
-              echo
-              echo "## Commits"
-              git log --pretty='- %s (`%h`)' HEAD
             else
               echo "_Changes since [\`${PREV}\`](../../releases/tag/${PREV})._"
               echo
@@ -123,6 +149,7 @@ jobs:
   build-ubuntu:
     name: Build (Ubuntu x86_64)
     runs-on: ubuntu-22.04
+    if: ${{ inputs.publish_from_run == '' || inputs.publish_from_run == null }}
     env:
       CC: clang
       CXX: clang++
@@ -167,6 +194,7 @@ jobs:
   build-arch:
     name: Build (Arch Linux x86_64)
     runs-on: ubuntu-24.04
+    if: ${{ inputs.publish_from_run == '' || inputs.publish_from_run == null }}
     container:
       image: archlinux:latest
       # Bind-mount the host's bulky pre-installed toolchains into the container
@@ -240,6 +268,7 @@ jobs:
   build-macos-arm:
     name: Build (macOS Apple Silicon)
     runs-on: macos-15
+    if: ${{ inputs.publish_from_run == '' || inputs.publish_from_run == null }}
     steps:
       - uses: actions/checkout@v4
       - name: Install Rust toolchain
@@ -267,13 +296,41 @@ jobs:
   release:
     name: Publish release
     needs: [changelog, build-ubuntu, build-arch, build-macos-arm]
-    if: needs.changelog.outputs.is_release == 'true' && (inputs.dry_run == false || inputs.dry_run == null)
+    # Gate:
+    #   - Always require the changelog job to succeed.
+    #   - Require is_release (i.e. a real tag or a `tag` input was provided).
+    #   - Respect dry_run.
+    #   - If publish_from_run is set, the build jobs were skipped — ignore their
+    #     status. Otherwise require all three builds to succeed.
+    if: |
+      always() &&
+      needs.changelog.result == 'success' &&
+      needs.changelog.outputs.is_release == 'true' &&
+      (inputs.dry_run == false || inputs.dry_run == null) &&
+      (
+        (inputs.publish_from_run != '' && inputs.publish_from_run != null) ||
+        (needs['build-ubuntu'].result == 'success' &&
+         needs['build-arch'].result == 'success' &&
+         needs['build-macos-arm'].result == 'success')
+      )
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - name: Download changelog artifact (from this run)
+        uses: actions/download-artifact@v4
+        with:
+          name: changelog
+          path: dist/changelog
+      - name: Download build artifacts
+        # In publish-from-run mode, pull the three build artifacts from the
+        # specified prior workflow run instead of the current run. Requires
+        # the `actions: read` permission on this workflow.
+        uses: actions/download-artifact@v4
         with:
           path: dist
+          pattern: 'zed-*'
+          run-id: ${{ inputs.publish_from_run || github.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Show downloaded artifacts
         run: ls -R dist
       - name: Create GitHub release
