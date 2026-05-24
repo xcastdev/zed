@@ -66,10 +66,43 @@ static CURRENT_DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
 static CONFIG_DIR: OnceLock<PathBuf> = OnceLock::new();
 
 /// Returns the relative path to the zed_server directory on the ssh host.
+///
+/// On Linux, when `XDG_DATA_HOME` is set and lies under the client's home
+/// directory, the path is rebased onto `<XDG_DATA_HOME relative to $HOME>/zed/server`
+/// so installs follow the XDG Base Directory Specification. Otherwise (no
+/// `XDG_DATA_HOME`, `XDG_DATA_HOME` outside `$HOME`, or any non-Linux client)
+/// falls back to the historical `.zed_server` location.
 pub fn remote_server_dir_relative() -> &'static RelPath {
-    static CACHED: LazyLock<&'static RelPath> =
-        LazyLock::new(|| RelPath::unix(".zed_server").unwrap());
+    static CACHED: LazyLock<&'static RelPath> = LazyLock::new(|| {
+        #[cfg(target_os = "linux")]
+        {
+            if let Some(rel) = xdg_data_home_relative_to_home() {
+                let leaked: &'static str =
+                    Box::leak(format!("{rel}/zed/server").into_boxed_str());
+                if let Ok(path) = RelPath::unix(leaked) {
+                    return path;
+                }
+            }
+        }
+        RelPath::unix(".zed_server").unwrap()
+    });
     *CACHED
+}
+
+#[cfg(target_os = "linux")]
+fn xdg_data_home_relative_to_home() -> Option<String> {
+    let xdg = env::var("XDG_DATA_HOME").ok()?;
+    let xdg = xdg.trim_end_matches('/');
+    if xdg.is_empty() {
+        return None;
+    }
+    let home = home_dir().to_str()?.trim_end_matches('/');
+    let stripped = xdg.strip_prefix(home)?.trim_matches('/');
+    if stripped.is_empty() {
+        None
+    } else {
+        Some(stripped.to_string())
+    }
 }
 
 // Remove this once 223 goes stable
