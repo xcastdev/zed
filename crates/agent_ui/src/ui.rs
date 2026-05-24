@@ -1,4 +1,6 @@
 mod agent_notification;
+#[cfg(target_os = "linux")]
+pub mod agent_notification_dbus;
 mod end_trial_upsell;
 mod hold_for_default;
 mod mention_crease;

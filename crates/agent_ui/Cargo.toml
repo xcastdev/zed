@@ -116,6 +116,9 @@ zed_actions.workspace = true
 image.workspace = true
 reqwest_client = { workspace = true, optional = true }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+ashpd.workspace = true
+
 [dev-dependencies]
 acp_thread = { workspace = true, features = ["test-support"] }
 agent = { workspace = true, features = ["test-support"] }

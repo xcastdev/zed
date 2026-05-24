@@ -2279,6 +2279,26 @@ impl AgentPanel {
                     self.pop_up_terminal_notification(terminal_id, &title, screen, window, cx);
                 }
             }
+            NotifyWhenAgentWaiting::SystemNotification => {
+                #[cfg(target_os = "linux")]
+                {
+                    let id = format!("zed-terminal-{}", terminal_id);
+                    let notification_title = title.to_string();
+                    cx.background_spawn(async move {
+                        crate::ui::agent_notification_dbus::send(
+                            &id,
+                            &notification_title,
+                            None,
+                        )
+                        .await
+                    })
+                    .detach_and_log_err(cx);
+                }
+                #[cfg(not(target_os = "linux"))]
+                if let Some(primary) = cx.primary_display() {
+                    self.pop_up_terminal_notification(terminal_id, &title, primary, window, cx);
+                }
+            }
             NotifyWhenAgentWaiting::Never => {}
         }
     }
