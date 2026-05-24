@@ -183,6 +183,12 @@ jobs:
     env:
       CC: clang
       CXX: clang++
+      # Arch ships glibc with the `__isoc23_*` symbols, so building the
+      # remote_server for x86_64-unknown-linux-musl (the default) fails at
+      # link time because aws-lc-sys references those symbols and musl
+      # doesn't provide them. Targeting glibc instead sidesteps it.
+      # See docs/src/development/linux.md and CLAUDE.local.md.
+      REMOTE_SERVER_TARGET: x86_64-unknown-linux-gnu
     steps:
       - name: Free host disk space via bind-mounted volumes
         run: |
